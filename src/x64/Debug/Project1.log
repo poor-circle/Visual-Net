@@ -1,1 +1,7 @@
-﻿  Project1.vcxproj -> E:\OneDrive - stu.xmu.edu.cn\Visual Net\src\x64\Debug\Project1.exe
+﻿C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Microsoft\VC\v160\Microsoft.CppBuild.targets(459,5): warning MSB8028: The intermediate directory (x64\Debug\) contains files shared from another project (Project1.vcxproj).  This can lead to incorrect clean and rebuild behavior.
+  pic.cpp
+E:\OneDrive - stu.xmu.edu.cn\Visual Net\src\pic.cpp(13,55): warning C4305: “初始化”: 从“double”到“const float”截断
+E:\OneDrive - stu.xmu.edu.cn\Visual Net\src\pic.cpp(19,55): warning C4267: “初始化”: 从“size_t”转换到“int”，可能丢失数据
+E:\OneDrive - stu.xmu.edu.cn\Visual Net\src\pic.cpp(115,14): warning C4244: “初始化”: 从“double”转换到“float”，可能丢失数据
+E:\OneDrive - stu.xmu.edu.cn\Visual Net\src\pic.cpp(281,98): warning C4267: “参数”: 从“size_t”转换到“int”，可能丢失数据
+  Project1.vcxproj -> E:\OneDrive - stu.xmu.edu.cn\Visual Net\src\x64\Debug\Visual Net.exe
