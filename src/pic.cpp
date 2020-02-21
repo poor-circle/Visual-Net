@@ -1,37 +1,43 @@
-#include<opencv2/opencv.hpp>
-#include<cstdio>
+ï»¿#include"pic.h"
+
 //#define FIND_QRPOINT_DEBUG 1
+//#define CropParallelRect_DEBUG 1
+#define Show_Img(src) do\
+{\
+	imshow("DEBUG", src);\
+	waitKey();\
+}while (0);
 namespace ImgParse
 {
-
-	using namespace cv;
-	using namespace std;
 	constexpr float MinRightAngel = 75.0, MaxRightAngel = 105.0;
+	constexpr float MaxQrTypeRate = 2.2, minQrTypeRate = 1.8;
+	constexpr float MaxDistanceRate = 1.1, minDistanceRate = 0.9;
 	Mat Rotation_90(const Mat& srcImg)
-	{   //·µ»ØÖ¸¶¨¾ØÕó90¶ÈºóµÄ¿½±´
+	{   //è¿”å›æŒ‡å®šçŸ©é˜µ90åº¦åçš„æ‹·è´
 		Mat tempImg;
 		transpose(srcImg, tempImg);
 		flip(tempImg, tempImg, 1);
 		return tempImg;
 	}
-	Point CalRectCenter(const vector<Point>& contours)
+	Point2f CalRectCenter(const vector<Point>& contours)
 	{
-		//ÕÒµ½ËùÌáÈ¡ÂÖÀªµÄÖĞĞÄµã
-		//ÔÚÌáÈ¡µÄÖĞĞÄĞ¡Õı·½ĞÎµÄ±ß½çÉÏÃ¿¸ôÖÜ³¤¸öÏñËØÌáÈ¡Ò»¸öµãµÄ×ø±ê£¬ÇóËùÌáÈ¡ËÄ¸öµãµÄÆ½¾ù×ø±ê£¨¼´ÎªĞ¡Õı·½ĞÎµÄ´óÖÂÖĞĞÄ£©
-		int centerx = 0, centery = 0, n = contours.size();
+		//æ‰¾åˆ°æ‰€æå–è½®å»“çš„ä¸­å¿ƒç‚¹
+		//åœ¨æå–çš„ä¸­å¿ƒå°æ­£æ–¹å½¢çš„è¾¹ç•Œä¸Šæ¯éš”å‘¨é•¿ä¸ªåƒç´ æå–ä¸€ä¸ªç‚¹çš„åæ ‡ï¼Œæ±‚æ‰€æå–å››ä¸ªç‚¹çš„å¹³å‡åæ ‡ï¼ˆå³ä¸ºå°æ­£æ–¹å½¢çš„å¤§è‡´ä¸­å¿ƒï¼‰
+		float centerx = 0, centery = 0;
+		int n = contours.size();
 		centerx = (contours[n / 4].x + contours[n * 2 / 4].x + contours[3 * n / 4].x + contours[n - 1].x) / 4;
 		centery = (contours[n / 4].y + contours[n * 2 / 4].y + contours[3 * n / 4].y + contours[n - 1].y) / 4;
-		return Point(centerx, centery);
+		return Point2f(centerx, centery);
 	}
 	bool IsClockWise(const Point& basePoint, const Point& point1, const Point& point2) 
-	{   //ÅĞ¶Ïpoint1ºÍpoint2µÄË³ÄæÊ±Õë¹ØÏµ
+	{   //åˆ¤æ–­point1å’Œpoint2çš„é¡ºé€†æ—¶é’ˆå…³ç³»
 		float ax = point1.x - basePoint.x, ay = point1.y - basePoint.y;
 		float bx = point2.x - basePoint.x, by = point2.y - basePoint.y;
 #ifdef FIND_QRPOINT_DEBUG
 		puts(((ax * by - bx * ay) > 0) ? "ClockWise" : "Anti-ClockWise");
 #endif 
 		return (ax * by - bx * ay) > 0;
-		//Èç¹ûµã2Î»ÓÚµã1µÄË³Ê±Õë·½Ïò£¬·µ»ØÕæ£¬·ñÔò·µ»Ø¼Ù
+		//å¦‚æœç‚¹2ä½äºç‚¹1çš„é¡ºæ—¶é’ˆæ–¹å‘ï¼Œè¿”å›çœŸï¼Œå¦åˆ™è¿”å›å‡
 	}
 	float Cal3PointAngle(const Point& point0, const Point& point1, const Point& point2)
 	{
@@ -40,55 +46,50 @@ namespace ImgParse
 		return acos((dx1 * dx2 + dy1 * dy2) / sqrt((dx1 * dx1 + dy1 * dy1) * (dx2 * dx2 + dy2 * dy2) + 1e-10f)) * 180.0f / 3.141592653f;
 	}
 	Mat CropRect(const Mat& srcImg, const RotatedRect& rotatedRect)
-	{   //´ÓÍ¼ÏñÖĞ²Ã¼ô³öÒ»¸ö¾ØĞÎ£¨¿É´ø½Ç¶È£©
+	{   //ä»å›¾åƒä¸­è£å‰ªå‡ºä¸€ä¸ªçŸ©å½¢ï¼ˆå¯å¸¦è§’åº¦ï¼‰
 		cv::Mat srcPoints, disImg;
-		boxPoints(rotatedRect, srcPoints);//µÃµ½¸Ã¾ØÕóµÄËÄµã
+		boxPoints(rotatedRect, srcPoints);//å¾—åˆ°è¯¥çŸ©é˜µçš„å››ç‚¹
 		vector<Point2f> dis_points =
 		{
 			Point2f(0,rotatedRect.size.height - 1),
 			Point2f(0,0),
 			Point2f(rotatedRect.size.width - 1,0),
 			Point2f(rotatedRect.size.width - 1,rotatedRect.size.height - 1)
-		};//³õÊ¼»¯Ä¿±ê¾ØÕóµÄËÄµã£¬Æä´óĞ¡È¡¾öÓÚ³õÊ¼¾ØÕó£¨³¤¿í²»±ä£©
-		auto M = getPerspectiveTransform(srcPoints, dis_points); //¼ÆËã±ä»»¾ØÕó
-		warpPerspective(srcImg, disImg, M, rotatedRect.size); //½øĞĞÍ¸ÊÓ±ä»»ÒÔÍê³É²Ã¼ô
+		};//åˆå§‹åŒ–ç›®æ ‡çŸ©é˜µçš„å››ç‚¹ï¼Œå…¶å¤§å°å–å†³äºåˆå§‹çŸ©é˜µï¼ˆé•¿å®½ä¸å˜ï¼‰
+		auto M = getPerspectiveTransform(srcPoints, dis_points); //è®¡ç®—å˜æ¢çŸ©é˜µ
+		warpPerspective(srcImg, disImg, M, rotatedRect.size); //è¿›è¡Œé€è§†å˜æ¢ä»¥å®Œæˆè£å‰ª
 #ifdef FIND_QRPOINT_DEBUG
-		imshow("debug", disImg);
-		waitKey(0);
+		Show_Img(disImg);
 #endif 
 		return disImg;
 	}
-	float distance(const Point& a, const Point& b)
+	float distance(const Point2f& a, const Point2f& b)
 	{
 		return sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 	}
-	Point CalForthPoint(const array<Point, 3>& poi3)
+	Point CalForthPoint(const Point &poi0, const Point& poi1, const Point &poi2)
 	{
-		return Point(poi3[2].x+poi3[1].x-poi3[0].x, poi3[2].y + poi3[1].y - poi3[0].y);
+		return Point(poi2.x+poi1.x-poi0.x, poi2.y + poi1.y - poi0.y);
 	}
-	Mat CropParallelRect(const Mat& srcImg, vector<Point2f>& srcPoints, float bias=0.0)
-	{   //´ÓÍ¼ÏñÖĞ²Ã¼ô³öÒ»¸öÆ½ĞĞËÄ±ßĞÎ
-		cv::Mat disImg;
-
-		float dis0 = distance(srcPoints[0], srcPoints[1]), dis1 = distance(srcPoints[1], srcPoints[3]);
+	pair<float,float> CalExtendVec(const Point2f& poi0,const Point2f& poi1, const Point2f& poi2,float bias)
+	{	//ç»™ä¸‰ä¸ªç‚¹ï¼Œè®¡ç®—é•¿åº¦ä¸ºbiasçš„å¤–è§’å¹³åˆ†å‘é‡
+		float dis0 = distance(poi0, poi1), dis1 = distance(poi0, poi2);
 		float rate = dis1 / dis0;
-		float x1 = srcPoints[0].x - srcPoints[2].x, y1 = srcPoints[0].y- srcPoints[2].y;
-		float x2 = (srcPoints[0].x - srcPoints[1].x)*rate, y2 = (srcPoints[0].y - srcPoints[1].y)*rate;
+		float x1 = poi0.x - poi2.x, y1 = poi0.y - poi2.y;
+		float x2 = (poi0.x - poi1.x)*rate, y2 = (poi0.y - poi1.y)* rate;
 		float totx = x1 + x2, toty = y1 + y2, distot = sqrt(totx * totx + toty * toty);
-		totx = totx / distot*bias ,toty= toty / distot *bias ;
-		int id[4] = { 0,1,3,2 };
-		//Æ«ÖÃÏòÁ¿¼ÆËã
+		return { totx / distot * bias, toty / distot * bias };
+	}
+	Mat CropParallelRect(const Mat& srcImg, const vector<Point2f>& srcPoints)
+	{   //ä»å›¾åƒä¸­å°†ä¸€ä¸ªå››è¾¹å½¢é€è§†å˜æ¢ä¸ºçŸ©å½¢(éœ€è¦å››ä¸ªç‚¹ï¼‰
+		cv::Mat disImg;
+		vector<Point2f> poi4 = srcPoints;
+		//int id[4][3] = { { 0,1,2 },{1,0,3},{2,0,3},{3,1,2} };
 		for (int i = 0; i < 4; ++i)
 		{
-			Point temp = srcPoints[id[i]];
-			srcPoints[id[i]].x += totx;
-			srcPoints[id[i]].y += toty;
-			std::swap(totx, toty);
-			totx *= -1;
 #ifdef CropParallelRect_DEBUG 
-			line(srcImg, temp, srcPoints[id[i]], CV_RGB(255, 0, 0), 2);
-			imshow("Debug", srcImg);
-			waitKey(0);
+			line(srcImg, srcPoints[i], poi4[i], CV_RGB(255, 0, 0), 2);
+			Show_Img(disImg);
 #endif
 		}
 		
@@ -99,25 +100,13 @@ namespace ImgParse
 			Point2f(size.width - 1,0),
 			Point2f(0,size.height - 1),
 			Point2f(size.width - 1,size.height - 1)
-		};//³õÊ¼»¯Ä¿±ê¾ØÕóµÄËÄµã£¬Æä´óĞ¡È¡¾öÓÚ³õÊ¼¾ØÕó£¨³¤¿í²»±ä£©
-		auto M = getPerspectiveTransform(srcPoints, dis_points); //¼ÆËã±ä»»¾ØÕó
-		warpPerspective(srcImg, disImg, M, size); //½øĞĞÍ¸ÊÓ±ä»»ÒÔÍê³É²Ã¼ô
-#ifdef FIND_QRPOINT_DEBUG
-		imshow("debug", disImg);
-		waitKey(0);
+		};//åˆå§‹åŒ–ç›®æ ‡çŸ©é˜µçš„å››ç‚¹ï¼Œå…¶å¤§å°å–å†³äºåˆå§‹çŸ©é˜µï¼ˆé•¿å®½ä¸å˜ï¼‰
+		auto M = getPerspectiveTransform(srcPoints, dis_points); //è®¡ç®—å˜æ¢çŸ©é˜µ
+		warpPerspective(srcImg, disImg, M, size); //è¿›è¡Œé€è§†å˜æ¢ä»¥å®Œæˆè£å‰ª
+#ifdef CropParallelRect_DEBUG 
+		Show_Img(disImg);
 #endif 
 		return disImg;
-	}
-	Mat CropParallelRect(const Mat& srcImg, const array<Point, 3>& poi3, float bias = 0.0)
-	{
-		vector<Point2f> srcPoints =
-		{
-			poi3[0],
-			poi3[1],
-			poi3[2],
-			CalForthPoint(poi3)
-		};
-		return CropParallelRect(srcImg, srcPoints, bias);
 	}
 	bool isRightlAngle(float angle)
 	{
@@ -125,37 +114,41 @@ namespace ImgParse
 	}
 	namespace QrcodeParse
 	{
+
 #ifdef FIND_QRPOINT_DEBUG
 		int TestCaseNumber = 1;
 #endif
 		struct ParseInfo
 		{
-			Point Center;
+			Point2f Center;
+			int size;
 			RotatedRect Rect;
 			ParseInfo(const vector<Point> &pointSet):
 				Center(CalRectCenter(pointSet)),
+				size(pointSet.size()),
 				Rect(minAreaRect(pointSet)){}
 			ParseInfo() = default;
 		};
-		constexpr float MaxQRBWRate = 2.22, MinQRBWRate = 0.45;//Ê¶±ğµãºÚ°×±ÈÀıÏŞÖÆ£¨ÀíÏë1.0£©
-		constexpr int MinQRSize = 10, BlurSize = 1;//×îĞ¡Ê¶±ğµã´óĞ¡£¬Ä£ºı°ë¾¶ 
-		constexpr float MaxQRScale = 0.25, MinQRXYRate = 9.0 / 10.0, MaxQRXYRate = 10.0 / 9.0;
+		constexpr float MaxQRBWRate = 2.22, MinQRBWRate = 0.45;//è¯†åˆ«ç‚¹é»‘ç™½æ¯”ä¾‹é™åˆ¶ï¼ˆç†æƒ³1.0ï¼‰
+		constexpr int MinQRSize = 10;//æœ€å°è¯†åˆ«ç‚¹å¤§å°ï¼Œæ¨¡ç³ŠåŠå¾„ç”±å›¾åƒå°ºå¯¸åŠ¨æ€åˆ¤å®š
+		constexpr float MaxQRScale = 0.25, MinQRXYRate = 5.0 / 6.0, MaxQRXYRate = 6.0 / 5.0;
+		//è¯†åˆ«ç‚¹é•¿åº¦å åŸå›¾çš„æœ€å¤§æ¯”ä¾‹ï¼Œè¯†åˆ«ç‚¹çš„é•¿å®½æ¯”æœ€å°é™åˆ¶å’Œæœ€å¤§é™åˆ¶
 		double Cal3NumVariance(const int a, const int b, const int c)
-		{   //¼ÆËãÈı¸öÕûÊıµÄ·½²î
+		{   //è®¡ç®—ä¸‰ä¸ªæ•´æ•°çš„æ–¹å·®
 			double avg = (a + b + c) / 3.0;
 			return (a - avg) * (a - avg) + (b - avg) * (b - avg) + (c - avg) * (c - avg);
-			//ÆäÊµÓ¦¸Ã³ıÒÔÈı£¬µ«ÊÇ¶¼Ã»³ıÈıÒ²²»Ó°Ïì±È½Ï´óĞ¡¡£
+			//å…¶å®åº”è¯¥é™¤ä»¥ä¸‰ï¼Œä½†æ˜¯éƒ½æ²¡é™¤ä¸‰ä¹Ÿä¸å½±å“æ¯”è¾ƒå¤§å°ã€‚
 		}
 		bool IsQrBWRateLegal(const float rate)
-		{   //ÅĞ¶ÏºÚ°×±ÈÀıÊÇ·ñºÏ·¨
+		{   //åˆ¤æ–­é»‘ç™½æ¯”ä¾‹æ˜¯å¦åˆæ³•
 			return rate < MaxQRBWRate && rate > MinQRBWRate;
-			// ÀíÏëÇé¿örate=1.0£¬Êµ¼Ê¿ÉÄÜÔÚÒ»¶¨·¶Î§ÄÚ²¨¶¯¡£
+			// ç†æƒ³æƒ…å†µrate=1.0ï¼Œå®é™…å¯èƒ½åœ¨ä¸€å®šèŒƒå›´å†…æ³¢åŠ¨ã€‚
 		}
 		bool BWRatePreprocessing(Mat& image, vector<int>& vValueCount)
-		{   //ºÚ°×ÌõÎÆÔ¤´¦Àíº¯Êı
+		{   //é»‘ç™½æ¡çº¹é¢„å¤„ç†å‡½æ•°
 			int count = 0, nc = image.cols * image.channels(), nr = image.rows / 2;
 			uchar lastColor = 0, * data = image.ptr<uchar>(nr);
-			for (int i = 0; i < nc; i++)      //¼ÆËãÌõÎÆÊıÁ¿ÒÔ¼°¸÷¸öÌõÎÆµÄÏñËØÊıÄ¿
+			for (int i = 0; i < nc; i++)      //è®¡ç®—æ¡çº¹æ•°é‡ä»¥åŠå„ä¸ªæ¡çº¹çš„åƒç´ æ•°ç›®
 			{
 				uchar color = data[i];
 				if (color > 0)
@@ -181,18 +174,18 @@ namespace ImgParse
 	#ifdef FIND_QRPOINT_DEBUG
 			printf(ans ? "Preprocess Passed!" : "Preprocess Failed!");
 	#endif   
-			return ans; //¶şÎ¬ÂëÎ´Í¨¹ıÔ¤´¦Àí£¨ÌõÎÆ²»¹»ºÚ°×ºÚ°×ºÚµÄ5Ìõ£©
+			return ans; //äºŒç»´ç æœªé€šè¿‡é¢„å¤„ç†ï¼ˆæ¡çº¹ä¸å¤Ÿé»‘ç™½é»‘ç™½é»‘çš„5æ¡ï¼‰
 		}
 		bool IsQrBWRateXLabel(Mat& image)
 		{
-			////¼ÆËã¶şÎ¬ÂëÊ¶±ğµãµÄXLabelµÄºÚ°×±ÈÀıÊÇ·ñÂú×ãÒªÇó
+			////è®¡ç®—äºŒç»´ç è¯†åˆ«ç‚¹çš„XLabelçš„é»‘ç™½æ¯”ä¾‹æ˜¯å¦æ»¡è¶³è¦æ±‚
 	#ifdef FIND_QRPOINT_DEBUG
 			printf("%c Labels:", (TestCaseNumber & 1) ? ('Y') : ('X'));
 	#endif 
 			vector<int> vValueCount;
-			if (!BWRatePreprocessing(image, vValueCount)) //Î´Í¨¹ıÔ¤´¦Àí£¬²»ÊÇÊ¶±ğµã
+			if (!BWRatePreprocessing(image, vValueCount)) //æœªé€šè¿‡é¢„å¤„ç†ï¼Œä¸æ˜¯è¯†åˆ«ç‚¹
 				return false;
-			//ºáÏòºÚ°×±ÈÀı1:1:3:1:1
+			//æ¨ªå‘é»‘ç™½æ¯”ä¾‹1:1:3:1:1
 			int index = -1, maxCount = -1;
 			for (int i = 0; i < vValueCount.size(); i++)
 			{
@@ -207,15 +200,15 @@ namespace ImgParse
 					maxCount = vValueCount[i];
 				}
 			}
-			//×ó±ß ÓÒ±ß ¶¼ÓĞÁ½¸öÖµ£¬²ÅĞĞ
+			//å·¦è¾¹ å³è¾¹ éƒ½æœ‰ä¸¤ä¸ªå€¼ï¼Œæ‰è¡Œ
 			if (index < 2 || (vValueCount.size() - index) < 3)
 				return false;
-			//ºÚ°×±ÈÀı1:1:3:1:1²âÊÔ
+			//é»‘ç™½æ¯”ä¾‹1:1:3:1:1æµ‹è¯•
 
-			float rate = ((float)maxCount) / 3.00;//ÒÔÖĞ¼äµÄ±ÈÀı3Îª»ù×¼
+			float rate = ((float)maxCount) / 3.00;//ä»¥ä¸­é—´çš„æ¯”ä¾‹3ä¸ºåŸºå‡†
 			bool checkTag = 1;
 	#ifdef FIND_QRPOINT_DEBUG
-			printf("BWRate: "); //Õı³£Ó¦¸ÃÊÇ1£º1£º3£º1£º1
+			printf("BWRate: "); //æ­£å¸¸åº”è¯¥æ˜¯1ï¼š1ï¼š3ï¼š1ï¼š1
 	#endif
 			for (int i = -2; i < 3; ++i)
 			{
@@ -228,11 +221,11 @@ namespace ImgParse
 			return checkTag;
 		}
 		bool IsQrBWRate(Mat& image)
-		{   //¼ÆËã¶şÎ¬ÂëÊ¶±ğµãµÄºá×İºÚ°×±ÈÀıÊÇ·ñÂú×ãÒªÇó
+		{   //è®¡ç®—äºŒç»´ç è¯†åˆ«ç‚¹çš„æ¨ªçºµé»‘ç™½æ¯”ä¾‹æ˜¯å¦æ»¡è¶³è¦æ±‚
 	#ifdef FIND_QRPOINT_DEBUG
 			printf("\t");
 	#endif
-			//¼ÆËãXÖáµÄ±ÈÀı
+			//è®¡ç®—Xè½´çš„æ¯”ä¾‹
 			bool xTest = IsQrBWRateXLabel(image);
 			if (!xTest)
 			{
@@ -245,7 +238,7 @@ namespace ImgParse
 			++TestCaseNumber;
 			printf("\n\t");
 	#endif
-			//¾ØÕóĞı×ª90¶ÈÒÔ¼ÆËãYÖá±ÈÀı
+			//çŸ©é˜µæ—‹è½¬90åº¦ä»¥è®¡ç®—Yè½´æ¯”ä¾‹
 			Mat image_rotation_90 = Rotation_90(image);
 			bool yTest = IsQrBWRateXLabel(image_rotation_90);
 	#ifdef FIND_QRPOINT_DEBUG
@@ -269,60 +262,58 @@ namespace ImgParse
 			puts(ans ? "Size test Passed!" : "Size test Failed!");
 			return ans;
 	#else
-			if (qrSize.height < MinQRSize || qrSize.width < MinQRSize) //ÅĞ¶Ï¿í¶ÈºÍ³¤¶ÈÊÇ·ñÌ«Ğ¡
+			if (qrSize.height < MinQRSize || qrSize.width < MinQRSize) //åˆ¤æ–­å®½åº¦å’Œé•¿åº¦æ˜¯å¦å¤ªå°
 				return false;
 			if (qrSize.height / imgSize.height >= MaxQRScale || qrSize.width / imgSize.width >= MaxQRScale)
-				return false;                                          //ÅĞ¶ÏÏà¶ÔÔ­Í¼ËùÕ¼µÄ±ÈÀıÊÇ·ñÌ«´ó
-			if (xYScale < MinQRXYRate || xYScale > MaxQRXYRate)        //ÅĞ¶Ï³¤¿í±ÈÊÇ·ñÊ§ºâ
+				return false;                                          //åˆ¤æ–­ç›¸å¯¹åŸå›¾æ‰€å çš„æ¯”ä¾‹æ˜¯å¦å¤ªå¤§
+			if (xYScale < MinQRXYRate || xYScale > MaxQRXYRate)        //åˆ¤æ–­é•¿å®½æ¯”æ˜¯å¦å¤±è¡¡
 				return false;
 	#endif
 		}
 		bool IsQrPoint(const vector<Point>& contour, const Mat& img)
-		{   //±¾º¯ÊıÅĞ¶ÏÊäÈëµÄvector<Point>ÊÇ·ñÊÇ¶şÎ¬ÂëÊ¶±ğµã
+		{   //æœ¬å‡½æ•°åˆ¤æ–­è¾“å…¥çš„vector<Point>æ˜¯å¦æ˜¯äºŒç»´ç è¯†åˆ«ç‚¹
 	#ifdef FIND_QRPOINT_DEBUG
-			TestCaseNumber += (TestCaseNumber & 1) ? (1) : (2); //¼ÆÊıÆ÷¿ØÖÆ
+			TestCaseNumber += (TestCaseNumber & 1) ? (1) : (2); //è®¡æ•°å™¨æ§åˆ¶
 			printf("\nPOINT %d:\n\t", TestCaseNumber / 2);
 	#endif
 			RotatedRect rotatedRect = minAreaRect(contour);
-			//¼ÆËã×îĞ¡¸²¸Ç¾ØĞÎ
+			//è®¡ç®—æœ€å°è¦†ç›–çŸ©å½¢
 			cv::Mat cropImg = CropRect(img, rotatedRect);
-			//½«¶şÎ¬Âë´ÓÕû¸öÍ¼ÉÏ¿Ù³öÀ´
+			//å°†äºŒç»´ç ä»æ•´ä¸ªå›¾ä¸ŠæŠ å‡ºæ¥
 			if (!IsQrSizeLegal(rotatedRect.size, img.size())) return false;
-			//ÅĞ¶Ï³ß´çÊÇ·ñºÏ·¨
+			//åˆ¤æ–­å°ºå¯¸æ˜¯å¦åˆæ³•
 			return IsQrBWRate(cropImg);
-			//ÅĞ¶ÏºÚ°×±ÈÀıÊÇ·ñºÏ·¨
+			//åˆ¤æ–­é»‘ç™½æ¯”ä¾‹æ˜¯å¦åˆæ³•
 		}
 		Mat ImgPreprocessing(const Mat& srcImg)
-		{   //ÊäÈëÍ¼ÏñÔ¤´¦Àíº¯Êı
+		{   //è¾“å…¥å›¾åƒé¢„å¤„ç†å‡½æ•°
 			Mat tmpImg;
-			//²ÊÉ«Í¼×ª»Ò¶ÈÍ¼
+			//å½©è‰²å›¾è½¬ç°åº¦å›¾
 			cvtColor(srcImg, tmpImg, COLOR_BGR2GRAY);
 	#ifdef FIND_QRPOINT_DEBUG
-			imshow("Gray_output", tmpImg);
-			waitKey(0);
+			Show_Img(tmpImg);
 	#endif		
-			//Ä£ºıÈ«Í¼£¬¼õÉÙ¸ßÆµĞÅÏ¢µÄ¸ÉÈÅ£¨ÓÈÆäÊÇÄ¦¶ûÎÆ£©
-			//Êµ¼ÊÉÏÄ¦¶ûÎÆÈ¥³ıËÆºõ»¹ÓĞ¸üºÃµÄ°ì·¨£¬¿¼ÂÇÈ¥µôÒ»Ğ©¸ßÆµÂÊĞÅÏ¢£¿
-			blur(tmpImg, tmpImg, Size(BlurSize, BlurSize));
+			//æ¨¡ç³Šå…¨å›¾ï¼Œå‡å°‘é«˜é¢‘ä¿¡æ¯çš„å¹²æ‰°ï¼ˆå°¤å…¶æ˜¯æ‘©å°”çº¹ï¼‰
+			//å®é™…ä¸Šæ‘©å°”çº¹å»é™¤ä¼¼ä¹è¿˜æœ‰æ›´å¥½çš„åŠæ³•ï¼Œè€ƒè™‘å»æ‰ä¸€äº›é«˜é¢‘ç‡ä¿¡æ¯ï¼Ÿ
+			float BlurSize =  1.0+srcImg.rows*0.001;
+			blur(tmpImg, tmpImg, Size2f(BlurSize, BlurSize));
 	#ifdef FIND_QRPOINT_DEBUG
-			imshow("Blur_output", tmpImg);
-			waitKey(0);
+			Show_Img(tmpImg);
 	#endif		
-			//¶şÖµ»¯
+			//äºŒå€¼åŒ–
 			threshold(tmpImg, tmpImg, 0, 255, THRESH_BINARY | THRESH_OTSU);
 	#ifdef FIND_QRPOINT_DEBUG
-			imshow("Threshold_output", tmpImg);
-			waitKey(0);
+			Show_Img(tmpImg);
 	#endif
 			return tmpImg;
 		}
 		bool ScreenQrPoint(const Mat& srcImg, vector<vector<Point>>& qrPoints)
 		{
-			//µ÷ÓÃ²éÕÒÂÖÀªº¯Êı
+			//è°ƒç”¨æŸ¥æ‰¾è½®å»“å‡½æ•°
 			vector<vector<Point> > contours;
 			vector<Vec4i> hierarchy;
 			findContours(srcImg, contours, hierarchy, RETR_TREE, CHAIN_APPROX_NONE, Point(0, 0));
-			//Í¨¹ıºÚÉ«¶¨Î»½Ç×÷Îª¸¸ÂÖÀª£¬ÓĞÁ½¸ö×ÓÂÖÀªµÄÌØµã£¬É¸Ñ¡³öÈı¸ö¶¨Î»½Ç
+			//é€šè¿‡é»‘è‰²å®šä½è§’ä½œä¸ºçˆ¶è½®å»“ï¼Œæœ‰ä¸¤ä¸ªå­è½®å»“çš„ç‰¹ç‚¹ï¼Œç­›é€‰å‡ºä¸‰ä¸ªå®šä½è§’
 
 			int parentIdx = -1;
 			int ic = 0;
@@ -346,7 +337,7 @@ namespace ImgParse
 				if (ic >= 2)
 				{
 					bool isQrPoint = IsQrPoint(contours[parentIdx], srcImg);
-					//±£´æÕÒµ½µÄÈı¸öºÚÉ«¶¨Î»½Ç
+					//ä¿å­˜æ‰¾åˆ°çš„ä¸‰ä¸ªé»‘è‰²å®šä½è§’
 					if (isQrPoint)
 						qrPoints.push_back(contours[parentIdx]);
 					ic = 0;
@@ -357,7 +348,7 @@ namespace ImgParse
 			printf("Find %d Points!", (int)qrPoints.size());
 			printf(qrPoints.size() < 3 ? "Points is too less,Screen Failed!" : "\n");
 	#endif // FIND_QRPOINT_DEBUG
-			return qrPoints.size() >= 3;
+			return qrPoints.size() < 3;
 		}
 		bool isRightAngleExist(const Point& point0, const Point& point1, const Point& point2)
 		{
@@ -372,13 +363,13 @@ namespace ImgParse
 				isRightlAngle(Cal3PointAngle(point2, point0, point1));
 		}
 		bool DumpExcessQrPoint(vector<vector<Point>>& qrPoints)
-		{	//Ä¿Ç°µÄÊµÏÖ£ºÅÅĞòºó¼ÆËãÃæ»ı´æÔÚÖ±½ÇµÄ·½²î×î½Ó½üµÄÈı¸öµã
-			//¿ÉÄÜÒÔºóÓĞ¸üºÃµÄÊµÏÖ£¿£¿
+		{	//ç›®å‰çš„å®ç°ï¼šæ’åºåè®¡ç®—é¢ç§¯å­˜åœ¨ç›´è§’çš„æ–¹å·®æœ€æ¥è¿‘çš„ä¸‰ä¸ªç‚¹
+			//å¯èƒ½ä»¥åæœ‰æ›´å¥½çš„å®ç°ï¼Ÿï¼Ÿ
 			sort(
 				qrPoints.begin(), qrPoints.end(),
 				[](const vector<Point>& a, const vector<Point>& b) {return a.size() < b.size(); }
 			);
-			//°´Ãæ»ıÅÅĞò
+			//æŒ‰é¢ç§¯æ’åº
 			double mindis = INFINITY;
 			int pos = -1;
 			Point Point0 = CalRectCenter(qrPoints[0]), Point1 = CalRectCenter(qrPoints[1]),Point2;
@@ -399,116 +390,138 @@ namespace ImgParse
 				Point0 = Point1;
 				Point1 = Point2;
 			}
-			//Èç¹ûpos==-1£¬Ôò°´´óĞ¡ÅÅĞòºó²»´æÔÚ¼Ğ½Ç90¶È×óÓÒµÄÊ¶±ğµã¡£
+			//å¦‚æœpos==-1ï¼Œåˆ™æŒ‰å¤§å°æ’åºåä¸å­˜åœ¨å¤¹è§’90åº¦å·¦å³çš„è¯†åˆ«ç‚¹ã€‚
 			if (pos == -1) return 0; 
 			else
 			{
-				vector<vector<Point>> temp = { qrPoints[pos - 2],qrPoints[pos - 1],qrPoints[pos] };
-				qrPoints.swap(temp);
+				vector<vector<Point>> temp = 
+				{ 
+					std::move(qrPoints[pos - 2]),
+					std::move(qrPoints[pos - 1]),
+					std::move(qrPoints[pos]) 
+				};
+				for (int i = 0; i < pos - 2; ++i)
+					temp.push_back(std::move(qrPoints[i]));
+				for (int i = pos+1; i < qrPoints.size(); ++i)
+					temp.push_back(std::move(qrPoints[i]));
+				std::swap(temp, qrPoints);
 				return 1;
 			}
-			//Èç²»µÈÓÚ1£¬ÔòÕÒµ½³ÉÖ±½ÇÇÒÃæ»ı·½²î×îĞ¡µÄÈı¸öµã
-			//Çå³ı¶àÓàµÄµã
+			//å¦‚ä¸ç­‰äº1ï¼Œåˆ™æ‰¾åˆ°æˆç›´è§’ä¸”é¢ç§¯æ–¹å·®æœ€å°çš„ä¸‰ä¸ªç‚¹
+			//æ¸…é™¤å¤šä½™çš„ç‚¹
 		}
-		void AdjustPointsOrder(array<vector<Point>, 3>& src3Points)
+		void AdjustPointsOrder(vector<vector<Point>>& src3Points)
 		{
-			array<vector<Point>, 3> temp;
+			vector<vector<Point>> temp;
 			Point p3[3] = { CalRectCenter(src3Points[0]),CalRectCenter(src3Points[1]),CalRectCenter(src3Points[2])};
 			int index[3][3] = { { 0,1,2 },{1,0,2},{2,0,1} };
 			for (int i = 0; i < 3; i++)
 			{
 				if (isRightlAngle(Cal3PointAngle(p3[index[i][0]], p3[index[i][1]], p3[index[i][2]])))
 				{
-					temp[0] = src3Points[index[i][0]];     //×óÉÏ½ÇµÄµãÎ»ÓÚ0ºÅ Red
-					if (IsClockWise(p3[index[i][0]], p3[index[i][1]], p3[index[i][2]]))//ÅĞ¶Ï1ºÅµãºÍ2ºÅµãµÄË³ÄæÊ±Õë¹ØÏµ
-					{                                      
-						temp[1] = src3Points[index[i][1]]; //ÓÒÉÏ½ÇµÄµãÎ»ÓÚ1ºÅ Green
-						temp[2] = src3Points[index[i][2]]; //×óÏÂ½ÇµÄµãÎ»ÓÚ2ºÅ Blue
+					temp.push_back(std::move(src3Points[index[i][0]]));     //å·¦ä¸Šè§’çš„ç‚¹ä½äº0å· Red
+					if (IsClockWise(p3[index[i][0]], p3[index[i][1]], p3[index[i][2]]))//åˆ¤æ–­1å·ç‚¹å’Œ2å·ç‚¹çš„é¡ºé€†æ—¶é’ˆå…³ç³»
+					{      
+						temp.push_back(std::move(src3Points[index[i][1]]));//å³ä¸Šè§’çš„ç‚¹ä½äº1å· Green
+						temp.push_back(std::move(src3Points[index[i][2]]));//å·¦ä¸‹è§’çš„ç‚¹ä½äº2å· Blue
 					}
 					else
 					{
-						temp[1] = src3Points[index[i][2]];
-						temp[2] = src3Points[index[i][1]];
+						temp.push_back(std::move(src3Points[index[i][2]]));//å³ä¸Šè§’çš„ç‚¹ä½äº1å· Green
+						temp.push_back(std::move(src3Points[index[i][1]]));//å·¦ä¸‹è§’çš„ç‚¹ä½äº2å· Blue
 					}
+					for (int i = 3; i < src3Points.size(); ++i)
+						temp.push_back(std::move(src3Points[i]));  //ç§»åŠ¨å…¶ä»–çš„ç‚¹
+					std::swap(temp, src3Points);
+					return;
 				}
 			}
-			src3Points.swap(temp);
 			return;
 		}
-		bool Get3Points(const Mat& srcImg, array<vector<Point>, 3> &qr3Points)
+		bool Main(const Mat& srcImg, vector<vector<Point>> &qrPoints)
 		{
-			vector<vector<Point>> qrPoints;
-			//Í¼ÏñÔ¤´¦Àí,È»ºóÉ¨Ãè¶¨Î»µã
-			if (!ScreenQrPoint(ImgPreprocessing(srcImg), qrPoints)) return 0;
-			//Èç¹û¶¨Î»µãÉÙÓÚÈı¸ö·µ»Øfalse£¬·ñÔò·µ»Øtrue
-			if (qrPoints.size() > 3 && !DumpExcessQrPoint(qrPoints)) return 0;
-			qr3Points = {qrPoints[0],qrPoints[1],qrPoints[2]};
-			AdjustPointsOrder(qr3Points);
-			return 1;
-		}
-		bool Get3Points(const Mat& srcImg, array<ParseInfo,3>& Points3Info)
-		{
-			array<vector<Point>, 3> qr3Points;
-			if (!Get3Points(srcImg, qr3Points)) return 0;
-			Points3Info = { qr3Points[0],qr3Points[1], qr3Points[2]};
-			return 1;
-		}
-		bool Main(const Mat& srcImg, Mat& disImg, array<ParseInfo, 3>& Points3Info)
-		{
-			if (!Get3Points(srcImg, Points3Info)) return 1;
-			auto poi3 = array<Point, 3>{Points3Info[0].Center, Points3Info[1].Center, Points3Info[2].Center};
-			float avglen = 0.0;
-			for (auto& e : Points3Info)
-			{
-				avglen += e.Rect.size.height + e.Rect.size.width;
-			}
-			avglen /= 6.0*sqrt(2.0)*0.8;
-
-			disImg=CropParallelRect(srcImg,poi3, avglen);
-			imshow("debug", disImg);
-			waitKey(0);
-			//if (!Get3Points(disImg, Points3Info)) return 1;
-			//avglen = 0.0;
-			//for (auto& e : Points3Info)
-			//{
-			//	avglen += e.Rect.size.height + e.Rect.size.width;
-			//}
-			//avglen /= 6.0 * sqrt(2.0);
-			//poi3 = array<Point, 3>{Points3Info[0].Center, Points3Info[1].Center, Points3Info[2].Center};
-			//disImg = CropParallelRect(disImg, poi3, avglen);
-			//imshow("debug2", disImg);
-			//waitKey(0);
+			//å›¾åƒé¢„å¤„ç†,ç„¶åæ‰«æå®šä½ç‚¹
+			if (ScreenQrPoint(ImgPreprocessing(srcImg), qrPoints)) return 1;
+			//å¦‚æœå®šä½ç‚¹å°‘äºä¸‰ä¸ªè¿”å›1ï¼Œå¦åˆ™è¿”å›0
+			if (!DumpExcessQrPoint(qrPoints)) return 1;
+			AdjustPointsOrder(qrPoints);
 			return 0;
 		}
-		// Ê¶±ğµã³¤¶ÈÕ¼Ô­Í¼µÄ×î´ó±ÈÀı£¬Ê¶±ğµãµÄ³¤¿í±È×îĞ¡ÏŞÖÆºÍ×î´óÏŞÖÆ
+		bool Main(const Mat& srcImg, vector<ParseInfo>& Points3Info)
+		{
+			vector<vector<Point>> qrPoints;
+			if (Main(srcImg, qrPoints)) return 1;
+			for (auto& e : qrPoints)
+				Points3Info.emplace_back(e);
+			return 0;
+		}
+		vector<Point2f> Adjust3PointsToParallelogram(vector<ParseInfo> Points3Info)
+		{
+			float avglen=0.0;
+			vector<Point2f> ret;
+			int id[4][3] = { { 0,1,2 },{1,0,3},{2,0,3},{3,1,2} };
+			for (int i = 0; i < 3; ++i)
+			{
+				ret.push_back(Points3Info[i].Center);
+				avglen += Points3Info[i].Rect.size.height;
+				avglen += Points3Info[i].Rect.size.width;
+			}
+			avglen /= 6.0 * sqrt(2.0) * 0.8;
+			ret.push_back
+			(
+				CalForthPoint
+				(
+					Points3Info[0].Center,
+					Points3Info[1].Center,
+				    Points3Info[2].Center
+				)
+			);
+			pair<float, float> temp[4];
+			for (int i = 0; i < 4; ++i)
+				temp[i] = CalExtendVec(ret[id[i][0]], ret[id[i][1]], ret[id[i][2]],avglen);
+			for (int i = 0; i < 4; ++i)
+			{
+				ret[i].x += temp[i].first;
+				ret[i].y += temp[i].second;
+			}
+			return ret;
+		}
+		bool Main(const Mat& srcImg, Mat& disImg, vector<ParseInfo>& Points3Info)
+		{
+			if (Main(srcImg, Points3Info)) return 1;
+			vector<float> avglen;
+			for (auto& e : Points3Info)
+				avglen.push_back(( e.Rect.size.height + e.Rect.size.width)/2.0);
+			disImg = CropParallelRect(srcImg, Adjust3PointsToParallelogram(Points3Info));
+		}
 		void __DisPlay(const char* ImgPath)
 		{
 			Mat srcImg = imread(ImgPath, 1);
-			imshow("Ô­Ê¼", srcImg);
-			array<vector<Point>, 3> qrPoints;
-			if (Get3Points(srcImg, qrPoints))
+			imshow("åŸå§‹", srcImg);
+			vector<vector<Point>> qrPoints;
+			if (!Main(srcImg, qrPoints))
 			{
 				for (int i = 0, C = 0x00FF0000; i < qrPoints.size(); ++i,C>>=8)
 					drawContours(srcImg, vector<vector<Point>>{qrPoints[i]}, 0, CV_RGB(C >> 16, (C >> 8) & 0xFF, C & 0xFF), -1);
-				//Ìî³ä¶¨Î»µã
-				//×óÉÏ½ÇµÄµãÏÔÊ¾ÎªºìÉ«£¬ÓÒÉÏ½ÇµÄµãÏÔÊ¾ÎªÂÌÉ«£¬×óÏÂ½ÇµÄµãÏÔÊ¾ÎªÀ¶É«
-				Point point[3];
+				//å¡«å……å®šä½ç‚¹
+				//å·¦ä¸Šè§’çš„ç‚¹æ˜¾ç¤ºä¸ºçº¢è‰²ï¼Œå³ä¸Šè§’çš„ç‚¹æ˜¾ç¤ºä¸ºç»¿è‰²ï¼Œå·¦ä¸‹è§’çš„ç‚¹æ˜¾ç¤ºä¸ºè“è‰²
+				Point2f point[3];
 				for (int i = 0; i < qrPoints.size(); i++)
 					point[i] = CalRectCenter(qrPoints[i]);
 				line(srcImg, point[0], point[1], Scalar(255, 255, 0), 2);
 				line(srcImg, point[1], point[2], Scalar(0, 255, 255), 2);
 				line(srcImg, point[0], point[2], Scalar(255, 0, 255), 2);
-				//Á¬½Ó¶¨Î»µã
-				imshow("½á¹û", srcImg);
+				//è¿æ¥å®šä½ç‚¹
+				imshow("ç»“æœ", srcImg);
 			}
 			waitKey(0);
 		}
 		void __DisPlay2(const char* ImgPath)
 		{
 			Mat srcImg = imread(ImgPath, 1);
-			imshow("Ô­Ê¼", srcImg);
-			array<ParseInfo, 3> qrPoints;
-			if (Get3Points(srcImg, qrPoints))
+			imshow("åŸå§‹", srcImg);
+			vector<ParseInfo> qrPoints;
+			if (!Main(srcImg, qrPoints))
 			{
 				line(srcImg, qrPoints[0].Center, qrPoints[1].Center, Scalar(0, 0, 255), 2);
 				line(srcImg, qrPoints[1].Center, qrPoints[2].Center, Scalar(0, 255, 0), 2);
@@ -522,39 +535,108 @@ namespace ImgParse
 					line(srcImg, poi[2], poi[3], Scalar(128, 128, 128), 2);
 					line(srcImg, poi[3], poi[0], Scalar(128, 128, 128), 2);
 				}
-				//Á¬½Ó¶¨Î»µã
-				imshow("½á¹û", srcImg);
+				//è¿æ¥å®šä½ç‚¹
+				imshow("ç»“æœ", srcImg);
 			}
 			waitKey(0);
 		}
 		void __DisPlay3(const char* ImgPath)
 		{
 			Mat srcImg = imread(ImgPath, 1), disImg;
-			array<ParseInfo, 3>  Points3Info;
-			Main(srcImg, disImg, Points3Info);
+			vector<ParseInfo>  Points3Info;
+			if (Main(srcImg, disImg, Points3Info))
+			{
+				puts("ERR");
+				return;
+			}
+			imshow("ans", disImg);
+			waitKey(0);
 		}
 	}
-	void CrapInfoArea(const array<Point, 3> &CenterPoints, const Mat& srcImg, Mat& disImg)
-	{//TODO
-		disImg = srcImg;
+	bool IsQrTypeRateLegal(float rate)
+	{
+		return rate<=MaxQrTypeRate && rate>=minQrTypeRate;
+	}
+	bool isLegalDistanceRate(float rate)
+	{
+		return rate <= MaxDistanceRate && rate >= minDistanceRate;
+	}
+	bool FindForthPoint(vector<QrcodeParse::ParseInfo>& PointsInfo)
+	{
+		float avgSize = (PointsInfo[0].size+ PointsInfo[1].size+ PointsInfo[2].size)/3.0;
+		float expectDistance = distance(PointsInfo[0].Center,CalForthPoint(PointsInfo[0].Center, PointsInfo[1].Center, PointsInfo[2].Center));
+		QrcodeParse::ParseInfo possiblePoints;
+		bool tag = 1;
+		for (int i = 3; i < PointsInfo.size(); ++i)
+			if (IsQrTypeRateLegal(avgSize / PointsInfo[i].size))//å¤§å°åˆé€‚
+				if (isRightlAngle(Cal3PointAngle(PointsInfo[i].Center, PointsInfo[1].Center, PointsInfo[2].Center)))
+					if (isLegalDistanceRate(distance(PointsInfo[i].Center, PointsInfo[0].Center) / expectDistance))
+					{
+						possiblePoints = std::move(PointsInfo[i]), tag = 0;
+						break;
+					}
+		if (tag) return 1;
+		PointsInfo.erase(PointsInfo.begin()+3,PointsInfo.end());
+		PointsInfo.push_back(std::move(possiblePoints));
+		return 0;
+	}
+	vector<Point2f> AdjustForthPoint(const vector<QrcodeParse::ParseInfo> PointsInfo,bool tag)
+	{
+		float avglen = 0.0;
+		vector<Point2f> ret;
+		int id[4][3] = { { 0,1,2 },{1,0,3},{2,0,3},{3,1,2} };
+		for (int i = 0; i < 3; ++i)
+		{
+			ret.push_back(PointsInfo[i].Center);
+			avglen += PointsInfo[i].Rect.size.height;
+			avglen += PointsInfo[i].Rect.size.width;
+		}
+		ret.push_back(PointsInfo[3].Center);
+		avglen += PointsInfo[3].Rect.size.height*2.0;
+		avglen += PointsInfo[3].Rect.size.width*2.0;
+		avglen /= (tag)?8.0:2.0;
+		if (tag) avglen = avglen / 14.0 * 9 * sqrt(2);
+		pair<float, float> temp[4];
+		for (int i = 0; i < 3; ++i)
+			temp[i] = CalExtendVec(ret[id[i][0]], ret[id[i][1]], ret[id[i][2]], avglen);
+		float forthCornerLen = avglen * ((tag)?(11.0/18.0):((56.0 - 3.5 * sqrt(2.0)) / 56.0));
+		temp[3] = CalExtendVec(ret[id[3][0]], ret[id[3][1]], ret[id[3][2]], forthCornerLen);
+		for (int i = 0; i < 4; ++i)
+		{
+			ret[i].x += temp[i].first;
+			ret[i].y += temp[i].second;
+		}
+		return ret;
 	}
 	bool Main(const Mat& srcImg, Mat& disImg)
 	{
-		array<vector<Point>, 3> qrPoints;
-		if (!QrcodeParse::Get3Points(srcImg, qrPoints)) return 0;
-		array<Point, 3> CenterPoints= { CalRectCenter(qrPoints[0]), CalRectCenter(qrPoints[1]) , CalRectCenter(qrPoints[2]) };
-		//AdjustPointsOrder(CenterPoints);
-		CrapInfoArea(CenterPoints, srcImg,disImg);
-		return 1;
+		Mat temp;
+		vector<QrcodeParse::ParseInfo> PointsInfo;
+		if (Main(srcImg, PointsInfo)|| PointsInfo.size()<4) return 1;
+		if (FindForthPoint(PointsInfo)) return 1;
+		temp = CropParallelRect(srcImg, AdjustForthPoint(PointsInfo,0));
+		disImg = CropParallelRect(srcImg, AdjustForthPoint(PointsInfo, 1));
+#ifdef FIND_QRPOINT_DEBUG
+		Show_Img(temp);
+#endif 
+		//ä¸€é˜¶è£å‰ªï¼Œå®Œæˆåˆæ­¥ç­›é€‰
+		PointsInfo.clear();
+		if (Main(temp, PointsInfo) || PointsInfo.size() < 4) return 1;
+		if (FindForthPoint(PointsInfo)) return 1;
+		disImg = CropParallelRect(temp, AdjustForthPoint(PointsInfo, 1));
+		//äºŒé˜¶è£å‰ªï¼Œå®Œæˆå®é™…æ˜ å°„ï¼Œæ¶ˆé™¤äºŒé˜¶åƒå·®
+		//å¦‚æœäºŒå§è£å‰ªå¤±è´¥è¿”å›ä¸€é˜¶è£å‰ªç¼©åœˆçš„ç»“æœã€‚
+		return 0;
 	}
-}
-int main(int argc, char** argv[])
-{
-	cv::Mat srcImg,disImg;
-	//srcImg = cv::imread("test7.jpg", 1);
-	//imshow("Ô­Ê¼", srcImg);
-
-	ImgParse::QrcodeParse::__DisPlay3("test5.jpg");
-	//ImgParse::Main(srcImg,disImg);
-	return 0;
+	void __DisPlay(const char *ImgPath)
+	{
+		Mat srcImg = imread(ImgPath, 1), disImg;
+		if (Main(srcImg, disImg))
+		{
+			puts("ERR");
+			return;
+		}
+		imshow("ans", disImg);
+		waitKey(0);
+	}
 }
