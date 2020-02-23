@@ -63,7 +63,7 @@ namespace ImgParse
 
 	pair<float, float> CalExtendVec(const Point2f& poi0, const Point2f& poi1, const Point2f& poi2, float bias);
 
-	Mat CropParallelRect(const Mat& srcImg, const vector<Point2f>& srcPoints);
+	Mat CropParallelRect(const Mat& srcImg, const vector<Point2f>& srcPoints,Size size);
 
 	bool isRightlAngle(float angle);
 
@@ -76,5 +76,7 @@ namespace ImgParse
 	bool Main(const Mat& srcImg, Mat& disImg);
 
 	void __DisPlay(const char* ImgPath);
+
+	void Resize(Mat& mat);
 
 }

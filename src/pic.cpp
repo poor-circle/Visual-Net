@@ -80,7 +80,7 @@ namespace ImgParse
 		float totx = x1 + x2, toty = y1 + y2, distot = sqrt(totx * totx + toty * toty);
 		return { totx / distot * bias, toty / distot * bias };
 	}
-	Mat CropParallelRect(const Mat& srcImg, const vector<Point2f>& srcPoints)
+	Mat CropParallelRect(const Mat& srcImg, const vector<Point2f>& srcPoints, Size size = { 0,0 })
 	{   //从图像中将一个四边形透视变换为矩形(需要四个点）
 		cv::Mat disImg;
 		vector<Point2f> poi4 = srcPoints;
@@ -89,11 +89,11 @@ namespace ImgParse
 		{
 #ifdef CropParallelRect_DEBUG 
 			line(srcImg, srcPoints[i], poi4[i], CV_RGB(255, 0, 0), 2);
-			Show_Img(disImg);
+			Show_Img(srcImg);
 #endif
 		}
-		
-		Size size = Size(distance(srcPoints[0], srcPoints[1]), distance(srcPoints[1], srcPoints[3]));
+		if (size==Size(0,0))
+			size = Size(distance(srcPoints[0], srcPoints[1]), distance(srcPoints[1], srcPoints[3]));
 		vector<Point2f> dis_points =
 		{
 			Point2f(0,0),
@@ -129,7 +129,7 @@ namespace ImgParse
 				Rect(minAreaRect(pointSet)){}
 			ParseInfo() = default;
 		};
-		constexpr float MaxQRBWRate = 2.22, MinQRBWRate = 0.45;//识别点黑白比例限制（理想1.0）
+		constexpr float MaxQRBWRate = 2.25, MinQRBWRate = 0.40;//识别点黑白比例限制（理想1.0）
 		constexpr int MinQRSize = 10;//最小识别点大小，模糊半径由图像尺寸动态判定
 		constexpr float MaxQRScale = 0.25, MinQRXYRate = 5.0 / 6.0, MaxQRXYRate = 6.0 / 5.0;
 		//识别点长度占原图的最大比例，识别点的长宽比最小限制和最大限制
@@ -268,6 +268,7 @@ namespace ImgParse
 				return false;                                          //判断相对原图所占的比例是否太大
 			if (xYScale < MinQRXYRate || xYScale > MaxQRXYRate)        //判断长宽比是否失衡
 				return false;
+			return true;
 	#endif
 		}
 		bool IsQrPoint(const vector<Point>& contour, const Mat& img)
@@ -295,7 +296,7 @@ namespace ImgParse
 	#endif		
 			//模糊全图，减少高频信息的干扰（尤其是摩尔纹）
 			//实际上摩尔纹去除似乎还有更好的办法，考虑去掉一些高频率信息？
-			float BlurSize =  1.0+srcImg.rows*0.001;
+			float BlurSize =  1.0+srcImg.rows*0.0005;
 			blur(tmpImg, tmpImg, Size2f(BlurSize, BlurSize));
 	#ifdef FIND_QRPOINT_DEBUG
 			Show_Img(tmpImg);
@@ -329,12 +330,12 @@ namespace ImgParse
 				{
 					ic++;
 				}
-				else if (hierarchy[i][2] == -1)
+			    else if (hierarchy[i][2] == -1)
 				{
 					ic = 0;
 					parentIdx = -1;
 				}
-				if (ic >= 2)
+				if (ic == 2)
 				{
 					bool isQrPoint = IsQrPoint(contours[parentIdx], srcImg);
 					//保存找到的三个黑色定位角
@@ -608,24 +609,160 @@ namespace ImgParse
 		}
 		return ret;
 	}
+	void GetVec(Mat& mat)
+	{
+		uint16_t minVec[3] = { 255,255,255 }, maxVec[3] = { 0, 0, 0 };
+		Mat tempMat;
+		for (int i = 10; i < 100; ++i)
+		{
+			for (int j = 10; j < 100; ++j)
+			{
+				Vec3b& temp = mat.at<Vec3b>(i, j);
+				minVec[0] = min(minVec[0], (uint16_t)temp[0]);
+				minVec[1] = min(minVec[1], (uint16_t)temp[1]);
+				minVec[2] = min(minVec[2], (uint16_t)temp[2]);
+				maxVec[0] = max(maxVec[0], (uint16_t)temp[0]);
+				maxVec[1] = max(maxVec[1], (uint16_t)temp[1]);
+				maxVec[2] = max(maxVec[2], (uint16_t)temp[2]);
+			}
+		}
+		float avg = (minVec[0] + maxVec[0]+minVec[1] + maxVec[1]+minVec[2] + maxVec[2])/6.0;
+		for (int i = 0; i < 1080; ++i)
+		{
+			for (int j = 0; j < 1080; ++j)
+			{
+				Vec3b& temp = mat.at<Vec3b>(i, j);
+				float sum = (temp[0] + temp[1] + temp[2])/3.0;
+				if (sum < avg) temp = Vec3b(0, 0, 0);
+				else temp = Vec3b(255, 255, 255);
+			}
+		}
+		return;
+	}
+	void dfs(int i, int j, int limi, int limj, int* dir, bool(*ispass)[16], const Mat& mat)
+	{
+		if ((limi - i) * dir[0] > 0 || (limj - j) * dir[1] > 0) return;
+		if ((limi - i) * dir[0] <= -16 || (limj - j) * dir[1] <= -16) return;
+		if (ispass[(i - limi) * dir[0]][(j - limj) * dir[1]]) return;
+		auto temp = mat.at<Vec3b>(i, j);
+		if (temp[0] == temp[1] && temp[1] == temp[2] && temp[2] == 255)
+		{
+			ispass[(i - limi) * dir[0]][(j - limj) * dir[1]] = 1;
+			dfs(i + 1 * dir[0], j, limi, limj, dir, ispass, mat);
+			dfs(i - 1 * dir[0], j, limi, limj, dir, ispass, mat);
+			dfs(i, j - 1 * dir[0], limi, limj, dir, ispass, mat);
+			dfs(i, j + 1 * dir[0], limi, limj, dir, ispass, mat);
+		}
+	}
+	vector<Point2f> FindConner(Mat& mat)
+	{
+		int dis = 0;
+		int dir[4][2] = { {1,1},{-1,1},{1,-1},{-1,-1} };
+		int poi[4][2] = { {0,0},{1079,0},{0,1079},{1079,1079} };
+		vector<Point2f> ret;
+		for (int k = 0; k < 4; ++k)
+		{
+			bool ispass[16][16] = { 0 };
+			dfs(poi[k][0] + 10 * dir[k][0], poi[k][1] + 10 * dir[k][1], poi[k][0], poi[k][1], dir[k], ispass, mat);
+			for (dis = 0; dis <= 15; ++dis)
+			{
+				for (int i = 0; i <= dis; ++i)
+				{
+					int j = dis - i;
+					auto temp = mat.at<Vec3b>(poi[k][0] + i * dir[k][0], poi[k][1] + j * dir[k][1]);
+					if (temp[0] == temp[1] && temp[1] == temp[2] && temp[2] == 255 && ispass[i][j])
+					{
+						ret.emplace_back(poi[k][0] + i * dir[k][0], poi[k][1] + j * dir[k][1]);
+						goto Final;
+					}
+				}
+			}
+		Final:
+			if (dis == 100)
+				break;
+		}
+		//Show_Img(mat);
+		if (ret.size() != 4) return ret;
+		std::swap(ret[1].x, ret[2].y);
+		std::swap(ret[2].x, ret[1].y);
+		return ret;
+	}
+	void Resize(Mat& mat)
+	{
+		Mat temp = Mat(108, 108, CV_8UC3);
+		for (int i = 0; i < 108; ++i)
+		{
+			for (int j = 0; j < 108; ++j)
+			{
+				int counter[8] = { 0 };
+				for (int k = 4; k <= 5; ++k)
+				{
+					for (int l = 4; l <= 5; ++l)
+					{
+						int id = 0;
+						const auto& vec = mat.at<Vec3b>(i * 10 + k, j * 10 + l);
+						if (vec[0] == 255)
+							id += 4;
+						if (vec[1] == 255)
+							id += 2;
+						if (vec[2] == 255)
+							id += 1;
+						++counter[id];
+					}
+				}
+				int maxpos = 0;
+				for (int i = 1; i < 8; ++i)
+					if (counter[maxpos] < counter[i])
+						maxpos = i;
+				temp.at<Vec3b>(i, j) = Vec3b((maxpos>>2)*255,((maxpos>>1)&1)*255,(maxpos&1)*255);
+			}
+		}
+		mat = temp;
+	}
 	bool Main(const Mat& srcImg, Mat& disImg)
 	{
 		Mat temp;
+		//Show_Img(srcImg);
 		vector<QrcodeParse::ParseInfo> PointsInfo;
 		if (Main(srcImg, PointsInfo)|| PointsInfo.size()<4) return 1;
 		if (FindForthPoint(PointsInfo)) return 1;
+		//一阶裁剪，完成初步筛选
 		temp = CropParallelRect(srcImg, AdjustForthPoint(PointsInfo,0));
-		disImg = CropParallelRect(srcImg, AdjustForthPoint(PointsInfo, 1));
 #ifdef FIND_QRPOINT_DEBUG
 		Show_Img(temp);
 #endif 
-		//一阶裁剪，完成初步筛选
-		PointsInfo.clear();
-		if (Main(temp, PointsInfo) || PointsInfo.size() < 4) return 1;
-		if (FindForthPoint(PointsInfo)) return 1;
-		disImg = CropParallelRect(temp, AdjustForthPoint(PointsInfo, 1));
+		disImg = CropParallelRect(srcImg, AdjustForthPoint(PointsInfo, 1));
+#ifdef FIND_QRPOINT_DEBUG
+		Show_Img(disImg);
+#endif 
 		//二阶裁剪，完成实际映射，消除二阶像差
-		//如果二姐裁剪失败返回一阶裁剪缩圈的结果。
+		PointsInfo.clear();
+		//return 0;
+		if (Main(temp, PointsInfo) || PointsInfo.size() < 4);
+		else
+		{
+			if (FindForthPoint(PointsInfo)) return 0;
+			disImg = CropParallelRect(temp, AdjustForthPoint(PointsInfo, 1));
+		}
+		//Show_Img(disImg);
+		//如果二姐裁剪失败根据一阶裁剪的信息返回一个不知道是否精确的结果。
+		//三阶微调，完成最终矫正
+		disImg.copyTo(temp);
+		cv::resize(temp, temp, Size(1080, 1080));
+		GetVec(temp);
+		auto poi4=FindConner(temp);
+		if (poi4.size() != 4) return 1;
+		cv::resize(disImg, disImg, Size(1080, 1080));
+		temp = CropParallelRect(disImg, poi4, Size(1080, 1080));
+		disImg = temp;
+#ifdef FIND_QRPOINT_DEBUG
+		Show_Img(disImg);
+#endif 
+		GetVec(disImg);
+		Resize(disImg);
+#ifdef FIND_QRPOINT_DEBUG
+		Show_Img(disImg);
+#endif 
 		return 0;
 	}
 	void __DisPlay(const char *ImgPath)

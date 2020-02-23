@@ -8,7 +8,8 @@
 }while (0);
 namespace Code
 {
-	constexpr int BytesPerFrame = 3738;
+	//constexpr int BytesPerFrame = 3738;
+	constexpr int BytesPerFrame = 1242;
 	constexpr int FrameSize = 108;
 	constexpr int FrameOutputRate = 10;
 	constexpr int SafeAreaWidth = 2;
@@ -20,10 +21,11 @@ namespace Code
 		Vec3b(0,0,0),Vec3b(0,0,255),Vec3b(0,255,0),Vec3b(0,255,255),
 		Vec3b(255,0,0),Vec3b(255,0,255),Vec3b(255,255,0), Vec3b(255,255,255)
 	};
-	const int lenlim[RectAreaCount] = { 426,432,1944,432,432,48,24 };
+	//const int lenlim[RectAreaCount] = { 426,432,1944,432,432,48,24 };
+	const int lenlim[RectAreaCount] = { 138,144,648,144,144,16,8 };
 	const int areapos[RectAreaCount][2][2] = //[2][2],第一维度代表高宽，第二维度代表左上角坐标
 	{
-		{{71,16},{QrPointSize + 1,SafeAreaWidth}},
+		{{69,16},{QrPointSize + 3,SafeAreaWidth}},
 		{{16,72},{SafeAreaWidth,QrPointSize}},
 		{{72,72},{QrPointSize,QrPointSize}},
 		{{72,16},{QrPointSize,FrameSize - QrPointSize}},
@@ -57,14 +59,18 @@ namespace Code
 		}
 		return dis;
 	}
-	uint16_t CalCheckCode(const char* info, int len)
+	uint16_t CalCheckCode(const unsigned char* info, int len, bool isStart, bool isEnd, uint16_t frameBase)
 	{
 		uint16_t ans = 0;
-		int cutlen = len / 2 * 2;
+		int cutlen = (len / 2)*2;
 		for (int i = 0; i < cutlen; i += 2)
-			ans ^= ((uint16_t)info[i] << 8) | info[i+1];
+			ans ^= ((uint16_t)info[i] << 8) | info[i + 1];
 		if (len & 1)
-			ans ^= (uint16_t)info[cutlen]<<8;
+			ans ^= (uint16_t)info[cutlen] << 8;
+		ans ^= len;
+		ans ^= frameBase;
+		uint16_t temp = (isStart << 1) + isEnd;
+		ans ^= temp;
 		return ans;
 	}
 	void BulidSafeArea(Mat& mat)
@@ -129,14 +135,24 @@ namespace Code
 		Show_Scale_Img(mat);
 #endif
 	}
-	void BulidCheckCodeAndFrameNo(Mat& mat,uint16_t checkcode,uint8_t FrameNo)
+	void BulidCheckCodeAndFrameNo(Mat& mat,uint16_t checkcode,uint16_t FrameNo)
 	{
-		uint32_t outputCode = (checkcode << 8) | (FrameNo);
-		for (int i = 8; i < 16; ++i)
+		//uint32_t outputCode = (checkcode << 8) | (FrameNo);
+		/*for (int i = 8; i < 16; ++i)
 		{
-			mat.at<Vec3b>(QrPointSize, SafeAreaWidth + i) = pixel[outputCode & 7];
+			mat.at<Vec3b>(QrPointSize+1, SafeAreaWidth + i) = pixel[outputCode & 7];
 			outputCode >>= 3;
+		}*/
+		for (int i = 0; i < 16; ++i)
+		{
+			mat.at<Vec3b>(QrPointSize+1, SafeAreaWidth + i) = pixel[(checkcode & 1)?7:0];
+			checkcode >>= 1;
 		}
+		for (int i = 0; i < 16; ++i)
+		{
+			mat.at<Vec3b>(QrPointSize + 2, SafeAreaWidth + i) = pixel[(FrameNo & 1) ? 7 : 0];
+			FrameNo >>= 1;
+	}
 #ifdef Code_DEBUG
 		Show_Scale_Img(mat);
 #endif
@@ -150,16 +166,19 @@ namespace Code
 			uint32_t outputCode = 0;
 			for (int j = 0; j < areapos[areaID][0][1]/8; ++j)
 			{
-				for (int k = 0; k < 3; ++k)
+				outputCode |= *pos++;
+				/*for (int k = 0; k < 3; ++k)
 				{
 					outputCode <<= 8;
 					if (pos != end)
 						outputCode |= *pos++;
-				}
+				}*/
 				for (int k = areapos[areaID][1][1]; k < areapos[areaID][1][1]+8; ++k)
 				{
-					mat.at<Vec3b>(i+areapos[areaID][1][0], j*8+k) = pixel[outputCode&7];
-					outputCode >>= 3;
+					//mat.at<Vec3b>(i+areapos[areaID][1][0], j*8+k) = pixel[outputCode&7];
+					//outputCode >>= 3;
+					mat.at<Vec3b>(i+areapos[areaID][1][0], j*8+k) = pixel[(outputCode&1)?7:0];
+					outputCode >>= 1;
 				}
 				if (pos == end) break;
 			}
@@ -171,7 +190,6 @@ namespace Code
 	}
 	void BulidFrameFlag(Mat& mat, FrameType frameType, int tailLen)
 	{
-		tailLen = 3123;
 		switch (frameType)
 		{
 		case FrameType::Start:
@@ -199,25 +217,35 @@ namespace Code
 			mat.at<Vec3b>(QrPointSize, SafeAreaWidth + 3) = pixel[Black];
 			break;
 		}
-		for (int i = 4; i < 8; ++i)
+		for (int i = 4; i < 16; ++i)
 		{
-			mat.at<Vec3b>(QrPointSize, SafeAreaWidth + i) = pixel[tailLen&7];
-			tailLen >>= 3;
+			mat.at<Vec3b>(QrPointSize, SafeAreaWidth + i) = pixel[(tailLen&1)?7:0];
+			tailLen >>= 1;
 		}
+		/*for (int i = 4; i < 8; ++i)
+		{
+			mat.at<Vec3b>(QrPointSize, SafeAreaWidth + i) = pixel[tailLen & 7];
+			tailLen >>= 3;
+		}*/
 #ifdef Code_DEBUG
 		Show_Scale_Img(mat);
 #endif
 	}
 	Mat CodeFrame(FrameType frameType, const char* info, int tailLen,int FrameNo)
 	{
-		Mat codeMat = Mat(FrameSize, FrameSize, CV_8UC3,Vec3d(128,128,128));
+		Mat codeMat = Mat(FrameSize, FrameSize, CV_8UC3,Vec3d(255,255,255));
 		if (frameType != FrameType::End&&frameType!=FrameType::StartAndEnd) 
 			tailLen = BytesPerFrame;
 		BulidSafeArea(codeMat);
 		BulidQrPoint(codeMat);
-		int checkCode=CalCheckCode(info, tailLen);
+		
+		int checkCode=CalCheckCode((const unsigned char*)info, tailLen,
+									frameType==FrameType::Start|| frameType == FrameType::StartAndEnd,
+			                        frameType==FrameType::End|| frameType == FrameType::StartAndEnd,FrameNo);
 		BulidFrameFlag(codeMat, frameType, tailLen);
-		BulidCheckCodeAndFrameNo(codeMat, checkCode, FrameNo % 256);
+		BulidCheckCodeAndFrameNo(codeMat, checkCode, FrameNo % 65536);
+		if (tailLen != BytesPerFrame) 
+			tailLen = BytesPerFrame;
 		for (int i = 0; i < RectAreaCount&&tailLen>0; ++i)
 		{
 			int lennow = std::min(tailLen, lenlim[i]);
@@ -227,7 +255,7 @@ namespace Code
 		}
 		return codeMat;
 	}
-	void main(const char* info, int len,const char * savePath,const char * outputFormat)
+	void Main(const char* info, int len,const char * savePath,const char * outputFormat)
 	{
 		Mat output;
 		char fileName[128];
@@ -235,7 +263,11 @@ namespace Code
 		if (len <= 0);
 		else if (len <= BytesPerFrame)
 		{
-			output= ScaleToDisSize(CodeFrame(FrameType::StartAndEnd, info, len, 0));
+			unsigned char BUF[BytesPerFrame + 5];
+			memcpy(BUF, info, sizeof(unsigned char) * len);
+			for (int i = len; i <= BytesPerFrame; ++i)
+				BUF[i] = rand() % 256;
+			output = ScaleToDisSize(CodeFrame(FrameType::StartAndEnd, (char*)BUF, len, 0));
 			sprintf_s(fileName, "%s\\%05d.%s", savePath, counter++, outputFormat);
 			imwrite(fileName, output);
 		}
@@ -252,7 +284,14 @@ namespace Code
 				if (len - BytesPerFrame > 0)
 					output= ScaleToDisSize(CodeFrame(FrameType::Normal, info, BytesPerFrame, ++i));
 				else
-					output= ScaleToDisSize(CodeFrame(FrameType::End, info, len, ++i));
+				{
+					unsigned char BUF[BytesPerFrame + 5];
+					memcpy(BUF, info, sizeof(unsigned char) * len);
+					for (int i = len; i <= BytesPerFrame; ++i)
+						BUF[i] = rand() % 256;
+					output= ScaleToDisSize(CodeFrame(FrameType::End, (char *)BUF,len, ++i));
+				}
+					
 				len -= BytesPerFrame;
 				sprintf_s(fileName, "%s\\%05d.%s", savePath, counter++, outputFormat);
 				imwrite(fileName, output);
