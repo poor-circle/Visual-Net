@@ -1,7 +1,7 @@
 ﻿#include"pic.h"
 
-//#define FIND_QRPOINT_DEBUG 1
-//#define CropParallelRect_DEBUG 1
+#define FIND_QRPOINT_DEBUG 1
+#define CropParallelRect_DEBUG 1
 #define Show_Img(src) do\
 {\
 	imshow("DEBUG", src);\

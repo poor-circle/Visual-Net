@@ -15,5 +15,5 @@ namespace Code
 	void BulidInfoRect(Mat& mat, const char* info, int len);
 	void BulidFrameFlag(Mat& mat, FrameType frameType, int tailLen);
 	Mat CodeFrame(FrameType frameType, const char* info, int tailLen, int FrameNo);
-	void Main(const char* info, int len,const char* savePath, const char* outputFormat);
+	void Main(const char* info, int len,const char* savePath, const char* outputFormat, int FrameCountLimit = INT_MAX);
 }

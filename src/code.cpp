@@ -255,11 +255,12 @@ namespace Code
 		}
 		return codeMat;
 	}
-	void Main(const char* info, int len,const char * savePath,const char * outputFormat)
+	void Main(const char* info, int len,const char * savePath,const char * outputFormat,int FrameCountLimit)
 	{
 		Mat output;
 		char fileName[128];
 		int counter = 0;
+		if (FrameCountLimit == 0) return;
 		if (len <= 0);
 		else if (len <= BytesPerFrame)
 		{
@@ -276,26 +277,33 @@ namespace Code
 			int i = 0;
 			len -= BytesPerFrame;
 			output= ScaleToDisSize(CodeFrame(FrameType::Start, info, len, 0));
+			--FrameCountLimit;
+			
 			sprintf_s(fileName, "%s\\%05d.%s", savePath, counter++, outputFormat);
 			imwrite(fileName, output);
-			do
+
+			while (len > 0 && FrameCountLimit > 0)
 			{
 				info += BytesPerFrame;
+				--FrameCountLimit;
 				if (len - BytesPerFrame > 0)
-					output= ScaleToDisSize(CodeFrame(FrameType::Normal, info, BytesPerFrame, ++i));
+				{
+					if (FrameCountLimit>0)
+						output = ScaleToDisSize(CodeFrame(FrameType::Normal, info, BytesPerFrame, ++i));
+					else output = ScaleToDisSize(CodeFrame(FrameType::End, info, BytesPerFrame, ++i));
+				}
 				else
 				{
 					unsigned char BUF[BytesPerFrame + 5];
 					memcpy(BUF, info, sizeof(unsigned char) * len);
 					for (int i = len; i <= BytesPerFrame; ++i)
 						BUF[i] = rand() % 256;
-					output= ScaleToDisSize(CodeFrame(FrameType::End, (char *)BUF,len, ++i));
+					output = ScaleToDisSize(CodeFrame(FrameType::End, (char*)BUF, len, ++i));
 				}
-					
 				len -= BytesPerFrame;
 				sprintf_s(fileName, "%s\\%05d.%s", savePath, counter++, outputFormat);
 				imwrite(fileName, output);
-			} while (len>0);
+			};
 		}
 		return;
 	}
