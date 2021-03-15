@@ -4,6 +4,8 @@
 
 已更新，修复了一些bug，添加了一些更友好的控制台输出，程序现在会自动删除缓存图片。默认情况下关闭所有imshow()调试语句
 
+bin中的程序已经自带了所有需要的环境，可以直接运行，无需配置opencv和ffmpeg
+
 本次更新提供了一个标准测试数据，供测试：
 
 测试图片：[下载地址](https://stuxmueducn-my.sharepoint.com/:i:/g/personal/21620172203354_stu_xmu_edu_cn/EUJqmLkuV15Kps-0evI3csYBec1kNvlAJ2Lbm9HwgKS8xg?e=yK9f30)
