@@ -1,3 +1,4 @@
+//这个文件封装了二维码的解码
 #include"ImgDecode.h"
 #include"pic.h"
 #include"code.h"

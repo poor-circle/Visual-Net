@@ -1,3 +1,4 @@
+//主函数
 #include"pic.h"
 #include"code.h"
 #include"ffmpeg.h"
@@ -8,25 +9,7 @@
 	cv::imshow("DEBUG", src);\
 	cv::waitKey();\
 }while (0);
-void comp(cv::Mat & mat, const char* rawPath)
-{
-	cv::Mat rawImg = cv::imread(rawPath, 1);
-	ImgParse::Resize(rawImg);
-	//Show_Img(mat);
-	int cnt = 0;
-	for (int i = 0; i < 108; ++i)
-	{
-		for (int j = 0; j < 108; ++j)
-		{
-			auto temp = rawImg.at<cv::Vec3b>(i, j);
-			auto temp2 = mat.at<cv::Vec3b>(i, j);
-			if (temp != temp2)
-			{
-				printf("different NO.%d in %d,%d\n", ++cnt, i, j);
-			}
-		}
-	}
-}
+//图片转视频
 int FileToVideo(const char* filePath, const char* videoPath,int timLim=INT_MAX,int fps=15)
 {
 	FILE* fp = fopen(filePath, "rb");
@@ -39,40 +22,48 @@ int FileToVideo(const char* filePath, const char* videoPath,int timLim=INT_MAX,i
 	fread(temp, 1, size, fp);
 	fclose(fp);
 	system("md outputImg");
-	Code::Main(temp, size, "outputImg", "png",fps*timLim/1000);
+	Code::Main(temp, size, "outputImg", "png",1LL*fps*timLim/1000);
 	FFMPEG::ImagetoVideo("outputImg", "png", videoPath, fps, 60, 100000);
 	system("rd /s /q outputImg");
 	free(temp);
 	return 0;
 }
+//视频转图片
 int VideoToFile(const char* videoPath, const char* filePath)
 {
 	char imgName[256];
+	system("rd /s /q inputImg");
 	system("md inputImg");
-	if (FFMPEG::VideotoImage(videoPath, "inputImg", "jpg")) return 1;
+	bool isThreadOver = false;
+	std::thread th([&] {FFMPEG::VideotoImage(videoPath, "inputImg", "jpg"); isThreadOver = true; });
 	int precode = -1;
 	std::vector<unsigned char> outputFile;
 	bool hasStarted=0;
-	int i = 0;
-	for (i = 51;; ++i)
+	bool ret = 0;
+	for (int i = 1;; ++i, system((std::string("del ") + imgName).c_str()))
 	{
+		printf("Reading Image %05d.jpg\n",i);
 		snprintf(imgName, 256, "inputImg\\%05d.jpg",i);
-		FILE* fp  = fopen(imgName,"rb");
+		FILE* fp;
+		do
+		{
+			fp = fopen(imgName, "rb");
+		} while (fp == nullptr && !isThreadOver);
+
 		if (fp == nullptr)
 		{
-			puts("eee");
-			return 1;
+			puts("failed to open the video, is the video Incomplete?");
+			ret = 1;
+			break;
 		}
-		fclose(fp);
 		cv::Mat srcImg = cv::imread(imgName, 1),disImg;
-		//cv::Mat disImg = cv::imread(imgName, 1);
-		//ImgParse::Resize(disImg);
+		fclose(fp);
+		
 		if (ImgParse::Main(srcImg, disImg))
 		{
 			continue;
 		}
 	    //Show_Img(disImg);
-		//comp(disImg, "00000.png");
 		ImageDecode::ImageInfo imageInfo;
 		bool ans = ImageDecode::Main(disImg, imageInfo);
 		if (ans)
@@ -88,28 +79,50 @@ int VideoToFile(const char* videoPath, const char* filePath)
 		if (precode == imageInfo.FrameBase) 
 			continue;
 		if (((precode + 1) & UINT16_MAX) != imageInfo.FrameBase)
-			return 1;
+		{
+			puts("error, there is a skipped frame,there are some images parsed failed.");
+			ret=1;
+			break;
+		}
+		printf("Frame %d is parsed!\n", imageInfo.FrameBase);
+
 		precode = (precode + 1) & UINT16_MAX;
 		for (auto& e : imageInfo.Info)
 			outputFile.push_back(e);
+
 		if (imageInfo.IsEnd)
 			break;
 	}
-	system("rd /s /q inputImg");
-	FILE*fp=fopen(filePath, "wb");
-	if (fp == nullptr) return 1;
-	outputFile.push_back('\0');
-	fwrite(outputFile.data(),sizeof(unsigned char),outputFile.size()-1,fp);
-	fclose(fp);
-	return 0;
+	if (ret == 0)
+	{
+		th.join();
+		printf("\nVideo Parse is success.\nFile Size:%lldB\nTotal Frame:%d\n",outputFile.size(), precode);
+		FILE*fp=fopen(filePath, "wb");
+		if (fp == nullptr) return 1;
+		outputFile.push_back('\0');
+		fwrite(outputFile.data(),sizeof(unsigned char),outputFile.size()-1,fp);
+		fclose(fp);
+		return ret;
+	}
+	exit(1);
 }
 int main(int argc, char* argv[])
 {
-	if (argc == 4)
-		FileToVideo(argv[1], argv[2], std::stoi(argv[3]));
-	else if (argc == 5)
-		FileToVideo(argv[1], argv[2], std::stoi(argv[3]), std::stoi(argv[4]));
-	else return 1;
-	//VideoToFile(argv[1], argv[2]);
-	return 0;
+	constexpr bool type = false;
+	//type==true 将文件编码为视频  命令行参数 ： 输入文件路径 输出视频路径 最长视频时长
+	//type==false 将视频编码为文件 命令行参数 ： 输入视频路径 输出图片路径
+	if constexpr(type)
+	{
+		if (argc == 4)
+			return FileToVideo(argv[1], argv[2], std::stoi(argv[3]));
+		else if (argc == 5)
+			return FileToVideo(argv[1], argv[2], std::stoi(argv[3]), std::stoi(argv[4]));
+	}
+	else
+	{
+		if (argc == 3)
+			return VideoToFile(argv[1], argv[2]);
+	}
+	puts("argument error,please check your argument");
+	return 1;
 }

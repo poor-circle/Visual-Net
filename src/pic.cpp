@@ -1,7 +1,8 @@
-﻿#include"pic.h"
-
-#define FIND_QRPOINT_DEBUG 1
-#define CropParallelRect_DEBUG 1
+﻿include"pic.h"
+//这个文件负责将视频中拆解出的帧，重定位成原始二维码
+// 定义下面两个宏来开启debug
+//#define FIND_QRPOINT_DEBUG 1
+//#define CropParallelRect_DEBUG 1
 #define Show_Img(src) do\
 {\
 	imshow("DEBUG", src);\
@@ -286,7 +287,7 @@ namespace ImgParse
 			return IsQrBWRate(cropImg);
 			//判断黑白比例是否合法
 		}
-		Mat ImgPreprocessing(const Mat& srcImg)
+		Mat ImgPreprocessing(const Mat& srcImg,float blurRate = 0.0005)
 		{   //输入图像预处理函数
 			Mat tmpImg;
 			//彩色图转灰度图
@@ -296,7 +297,8 @@ namespace ImgParse
 	#endif		
 			//模糊全图，减少高频信息的干扰（尤其是摩尔纹）
 			//实际上摩尔纹去除似乎还有更好的办法，考虑去掉一些高频率信息？
-			float BlurSize =  1.0+srcImg.rows*0.0005;
+			float BlurSize =  1.0+srcImg.rows* blurRate;
+
 			blur(tmpImg, tmpImg, Size2f(BlurSize, BlurSize));
 	#ifdef FIND_QRPOINT_DEBUG
 			Show_Img(tmpImg);
@@ -392,7 +394,7 @@ namespace ImgParse
 				Point1 = Point2;
 			}
 			//如果pos==-1，则按大小排序后不存在夹角90度左右的识别点。
-			if (pos == -1) return 0; 
+			if (pos == -1) return 1; 
 			else
 			{
 				vector<vector<Point>> temp = 
@@ -406,7 +408,7 @@ namespace ImgParse
 				for (int i = pos+1; i < qrPoints.size(); ++i)
 					temp.push_back(std::move(qrPoints[i]));
 				std::swap(temp, qrPoints);
-				return 1;
+				return 0;
 			}
 			//如不等于1，则找到成直角且面积方差最小的三个点
 			//清除多余的点
@@ -441,12 +443,23 @@ namespace ImgParse
 		}
 		bool Main(const Mat& srcImg, vector<vector<Point>> &qrPoints)
 		{
-			//图像预处理,然后扫描定位点
-			if (ScreenQrPoint(ImgPreprocessing(srcImg), qrPoints)) return 1;
-			//如果定位点少于三个返回1，否则返回0
-			if (!DumpExcessQrPoint(qrPoints)) return 1;
-			AdjustPointsOrder(qrPoints);
-			return 0;
+			//五种模糊率设置
+			vector<vector<Point>> qrPointsTemp;
+			std::array<float, 5> ar = { 0.0005,0.0000,0.00025,0.001,0.0001};
+			for (auto& rate:ar)//尝试不同的模糊率
+			{
+				//图像预处理,然后扫描定位点
+				if (!ScreenQrPoint(ImgPreprocessing(srcImg, rate), qrPointsTemp))
+				{
+					if (qrPointsTemp.size()>=4&&!DumpExcessQrPoint(qrPointsTemp))
+					{
+						qrPointsTemp.swap(qrPoints);
+						AdjustPointsOrder(qrPoints);
+						return 0;
+					}
+				}
+			}
+			return 1;
 		}
 		bool Main(const Mat& srcImg, vector<ParseInfo>& Points3Info)
 		{
@@ -569,6 +582,9 @@ namespace ImgParse
 		QrcodeParse::ParseInfo possiblePoints;
 		bool tag = 1;
 		for (int i = 3; i < PointsInfo.size(); ++i)
+		{
+#ifdef FIND_QRPOINT_DEBUG
+#endif
 			if (IsQrTypeRateLegal(avgSize / PointsInfo[i].size))//大小合适
 				if (isRightlAngle(Cal3PointAngle(PointsInfo[i].Center, PointsInfo[1].Center, PointsInfo[2].Center)))
 					if (isLegalDistanceRate(distance(PointsInfo[i].Center, PointsInfo[0].Center) / expectDistance))
@@ -576,6 +592,8 @@ namespace ImgParse
 						possiblePoints = std::move(PointsInfo[i]), tag = 0;
 						break;
 					}
+		}
+			
 		if (tag) return 1;
 		PointsInfo.erase(PointsInfo.begin()+3,PointsInfo.end());
 		PointsInfo.push_back(std::move(possiblePoints));
@@ -722,38 +740,45 @@ namespace ImgParse
 	bool Main(const Mat& srcImg, Mat& disImg)
 	{
 		Mat temp;
-		//Show_Img(srcImg);
-		vector<QrcodeParse::ParseInfo> PointsInfo;
-		if (Main(srcImg, PointsInfo)|| PointsInfo.size()<4) return 1;
-		if (FindForthPoint(PointsInfo)) return 1;
-		//一阶裁剪，完成初步筛选
-		temp = CropParallelRect(srcImg, AdjustForthPoint(PointsInfo,0));
-#ifdef FIND_QRPOINT_DEBUG
-		Show_Img(temp);
-#endif 
-		disImg = CropParallelRect(srcImg, AdjustForthPoint(PointsInfo, 1));
-#ifdef FIND_QRPOINT_DEBUG
-		Show_Img(disImg);
-#endif 
-		//二阶裁剪，完成实际映射，消除二阶像差
-		PointsInfo.clear();
-		//return 0;
-		if (Main(temp, PointsInfo) || PointsInfo.size() < 4);
-		else
+
+		//以下为定位过程
 		{
-			if (FindForthPoint(PointsInfo)) return 0;
-			disImg = CropParallelRect(temp, AdjustForthPoint(PointsInfo, 1));
+			//Show_Img(srcImg);
+			vector<QrcodeParse::ParseInfo> PointsInfo;
+			if (Main(srcImg, PointsInfo) || PointsInfo.size() < 4) 
+				return 1;
+
+			if (FindForthPoint(PointsInfo)) return 1;
+			//一阶裁剪，完成初步筛选
+			temp = CropParallelRect(srcImg, AdjustForthPoint(PointsInfo, 0));
+#ifdef FIND_QRPOINT_DEBUG
+			Show_Img(temp);
+#endif 
+			disImg = CropParallelRect(srcImg, AdjustForthPoint(PointsInfo, 1));
+#ifdef FIND_QRPOINT_DEBUG
+			Show_Img(disImg);
+#endif 
+			//二阶裁剪，完成实际映射，消除二阶像差
+			PointsInfo.clear();
+			//return 0;
+			if (Main(temp, PointsInfo) || PointsInfo.size() < 4);
+			else
+			{
+				if (FindForthPoint(PointsInfo)) return 0;
+				disImg = CropParallelRect(temp, AdjustForthPoint(PointsInfo, 1));
+			}
+			//Show_Img(disImg);
+			//如果二阶裁剪失败根据一阶裁剪的信息返回一个不知道是否精确的结果。
+			//三阶微调，完成最终矫正
+			disImg.copyTo(temp);
+			cv::resize(temp, temp, Size(1080, 1080));
+			GetVec(temp);
+			auto poi4 = FindConner(temp);
+			if (poi4.size() != 4) return 1;
+			cv::resize(disImg, disImg, Size(1080, 1080));
+			temp = CropParallelRect(disImg, poi4, Size(1080, 1080));
 		}
-		//Show_Img(disImg);
-		//如果二姐裁剪失败根据一阶裁剪的信息返回一个不知道是否精确的结果。
-		//三阶微调，完成最终矫正
-		disImg.copyTo(temp);
-		cv::resize(temp, temp, Size(1080, 1080));
-		GetVec(temp);
-		auto poi4=FindConner(temp);
-		if (poi4.size() != 4) return 1;
-		cv::resize(disImg, disImg, Size(1080, 1080));
-		temp = CropParallelRect(disImg, poi4, Size(1080, 1080));
+		
 		disImg = temp;
 #ifdef FIND_QRPOINT_DEBUG
 		Show_Img(disImg);

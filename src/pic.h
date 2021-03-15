@@ -27,7 +27,7 @@ namespace ImgParse
 
 		bool IsQrPoint(const vector<Point>& contour, const Mat& img);
 
-		Mat ImgPreprocessing(const Mat& srcImg);
+		Mat ImgPreprocessing(const Mat& srcImg,float blurRate);
 
 		bool ScreenQrPoint(const Mat& srcImg, vector<vector<Point>>& qrPoints);
 

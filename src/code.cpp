@@ -1,4 +1,7 @@
+
+//这个文件负责二维码的编码
 #include"code.h"
+//定义下面一个宏来开启debug
 //#define Code_DEBUG
 #define Show_Scale_Img(src) do\
 {\

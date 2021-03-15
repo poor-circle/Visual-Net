@@ -1,3 +1,4 @@
+//这个文件封装了ffmpeg的调用
 #include "ffmpeg.h"
 namespace FFMPEG
 {
