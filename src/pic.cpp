@@ -1,4 +1,4 @@
-﻿include"pic.h"
+#include"pic.h"
 //这个文件负责将视频中拆解出的帧，重定位成原始二维码
 // 定义下面两个宏来开启debug
 //#define FIND_QRPOINT_DEBUG 1
